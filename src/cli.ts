@@ -2,7 +2,7 @@ export const HELP_TEXT = `Usage:
   ollama-proxy serve
   ollama-proxy version
   ollama-proxy versions
-  ollama-proxy update [--check] [--version <tag>]
+  ollama-proxy update [--check] [--force] [--version <tag>]
   ollama-proxy setup-systemd
   ollama-proxy disable
   ollama-proxy uninstall
@@ -43,7 +43,9 @@ Description:
 export const UPDATE_HELP_TEXT = `Usage:
   ollama-proxy update
   ollama-proxy update --check
+  ollama-proxy update --force
   ollama-proxy update --version <tag>
+  ollama-proxy update --version <tag> --force
 
 Description:
   Update a standalone release binary from GitHub Releases.

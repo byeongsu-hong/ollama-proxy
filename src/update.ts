@@ -17,6 +17,7 @@ import {
   normalizeVersionTag,
   verifyReleaseAssetChecksum
 } from './releases'
+import { hasManagedSystemdService, resolveSystemdServiceName } from './systemd'
 import { CURRENT_VERSION_TAG } from './version'
 
 type Spawn = (command: string, args: string[]) => SpawnSyncReturns<Buffer>
@@ -41,6 +42,7 @@ type VersionsOptions = CommonOptions
 
 type ParsedUpdateArgs = {
   check: boolean
+  force: boolean
   versionTag?: string
 }
 
@@ -90,6 +92,35 @@ const getReleaseContext = (env: Record<string, string | undefined>) => ({
   token: env.GITHUB_TOKEN
 })
 
+const restartManagedSystemdService = async ({
+  currentUid,
+  env,
+  platform,
+  spawn,
+  stdout
+}: {
+  currentUid: number
+  env: Record<string, string | undefined>
+  platform: NodeJS.Platform
+  spawn: Spawn
+  stdout: typeof defaultStdout
+}): Promise<void> => {
+  if (platform !== 'linux' || !(await hasManagedSystemdService(env))) {
+    return
+  }
+
+  const serviceName = resolveSystemdServiceName(env)
+  stdout.write(`Restarting systemd service ${serviceName}.\n`)
+
+  if (currentUid === 0) {
+    runCommand(spawn, 'systemctl', ['restart', serviceName])
+  } else {
+    runCommand(spawn, 'sudo', ['systemctl', 'restart', serviceName])
+  }
+
+  stdout.write(`Restarted ${serviceName}.\n`)
+}
+
 const installBinary = async ({
   currentExecutablePath,
   currentUid,
@@ -134,6 +165,7 @@ const installBinary = async ({
 
 export const parseUpdateArgs = (args: string[]): ParsedUpdateArgs => {
   let check = false
+  let force = false
   let versionTag: string | undefined
 
   for (let index = 0; index < args.length; index += 1) {
@@ -141,6 +173,11 @@ export const parseUpdateArgs = (args: string[]): ParsedUpdateArgs => {
 
     if (arg === '--check') {
       check = true
+      continue
+    }
+
+    if (arg === '--force') {
+      force = true
       continue
     }
 
@@ -164,7 +201,7 @@ export const parseUpdateArgs = (args: string[]): ParsedUpdateArgs => {
     throw new Error(`unknown update option: ${arg}`)
   }
 
-  return { check, versionTag }
+  return { check, force, versionTag }
 }
 
 export const listVersions = async ({
@@ -213,7 +250,7 @@ export const updateBinary = async ({
   stderr = defaultStderr,
   stdout = defaultStdout
 }: UpdateOptions): Promise<void> => {
-  const { check, versionTag } = parseUpdateArgs(args)
+  const { check, force, versionTag } = parseUpdateArgs(args)
   const { repo, token } = getReleaseContext(env)
 
   if (check) {
@@ -232,8 +269,8 @@ export const updateBinary = async ({
     ? await fetchReleaseByTag({ fetchImpl, repo, tag: versionTag, token })
     : latestRelease
 
-  if (targetRelease.tag_name === CURRENT_VERSION_TAG) {
-    stdout.write(`Already on ${targetRelease.tag_name}.\n`)
+  if (targetRelease.tag_name === CURRENT_VERSION_TAG && !force) {
+    stdout.write(`Already on ${targetRelease.tag_name}. Use --force to reinstall it.\n`)
     return
   }
 
@@ -259,6 +296,16 @@ export const updateBinary = async ({
       spawn,
       stdout
     })
+
+    if (force) {
+      await restartManagedSystemdService({
+        currentUid,
+        env,
+        platform,
+        spawn,
+        stdout
+      })
+    }
 
     stdout.write(`Updated to ${targetRelease.tag_name}.\n`)
   } catch (error) {

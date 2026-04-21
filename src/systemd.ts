@@ -1,5 +1,5 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
-import { chmod, copyFile, mkdir, rm, writeFile } from 'node:fs/promises'
+import { access, chmod, copyFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { stderr as defaultStderr, stdin as defaultStdin, stdout as defaultStdout } from 'node:process'
@@ -72,13 +72,41 @@ type DisableSystemdOptions = {
 const DEFAULT_BINARY_PATH = '/usr/local/bin/ollama-proxy'
 const DEFAULT_OLLAMA_BASE_URL = 'http://127.0.0.1:11434'
 const DEFAULT_PORT = 3000
-const DEFAULT_SERVICE_NAME = 'ollama-proxy'
+export const DEFAULT_SERVICE_NAME = 'ollama-proxy'
 
-const DEFAULT_SERVICE_FILE_PATH = (serviceName: string): string =>
+export const getDefaultServiceFilePath = (serviceName: string): string =>
   `/etc/systemd/system/${serviceName}.service`
 
 const DEFAULT_ENV_FILE_PATH = (serviceName: string): string =>
   `/etc/${serviceName}/${serviceName}.env`
+
+export const resolveSystemdServiceName = (env: Record<string, string | undefined> = process.env): string => {
+  const configuredName = env.OLLAMA_PROXY_SYSTEMD_SERVICE?.trim()
+  return configuredName === '' || configuredName === undefined ? DEFAULT_SERVICE_NAME : configuredName
+}
+
+export const resolveSystemdServiceFilePath = (
+  env: Record<string, string | undefined> = process.env
+): string => {
+  const configuredPath = env.OLLAMA_PROXY_SYSTEMD_SERVICE_FILE?.trim()
+
+  if (configuredPath && configuredPath !== '') {
+    return configuredPath
+  }
+
+  return getDefaultServiceFilePath(resolveSystemdServiceName(env))
+}
+
+export const hasManagedSystemdService = async (
+  env: Record<string, string | undefined> = process.env
+): Promise<boolean> => {
+  try {
+    await access(resolveSystemdServiceFilePath(env))
+    return true
+  } catch {
+    return false
+  }
+}
 
 const SOURCE_RUNTIME_BASENAMES = ['bun', 'bun-debug']
 
@@ -363,7 +391,7 @@ export const setupSystemd = async ({
             serviceName
           }
 
-    const serviceFilePath = DEFAULT_SERVICE_FILE_PATH(serviceName)
+    const serviceFilePath = getDefaultServiceFilePath(serviceName)
 
     stdout.write(
       `\nPreparing ${serviceName}\n- unit: ${serviceFilePath}\n- env: ${envFilePath}\n- mode: ${runtimeKind}\n`
@@ -429,7 +457,7 @@ export const uninstallSystemd = async ({
 
   try {
     const serviceName = await promptText(prompter, 'Service name', DEFAULT_SERVICE_NAME)
-    const serviceFilePath = await promptText(prompter, 'Service unit path', DEFAULT_SERVICE_FILE_PATH(serviceName))
+    const serviceFilePath = await promptText(prompter, 'Service unit path', getDefaultServiceFilePath(serviceName))
     const envFilePath = await promptText(prompter, 'Environment file path', DEFAULT_ENV_FILE_PATH(serviceName))
     const shouldRemoveBinary = await promptYesNo(
       prompter,

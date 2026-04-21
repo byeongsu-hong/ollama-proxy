@@ -82,6 +82,12 @@ Or install a specific release:
 ollama-proxy update --version v0.0.3
 ```
 
+To reinstall the same release anyway and restart a managed `systemd` service after replacement:
+
+```bash
+ollama-proxy update --version v0.0.3 --force
+```
+
 ## Run
 
 ```bash
