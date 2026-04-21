@@ -26,6 +26,11 @@ describe('resolveCommand', () => {
     ).toEqual(['setup-systemd', '--help'])
   })
 
+  it('defaults to serve when the standalone runtime injects only an internal Bun entrypoint', () => {
+    expect(resolveCliArgs(['/usr/local/bin/ollama-proxy', '/$bunfs/root/index.js'])).toEqual([])
+    expect(resolveCommand(['/usr/local/bin/ollama-proxy', '/$bunfs/root/index.js'])).toBe('serve')
+  })
+
   it('keeps unknown commands intact instead of treating them as entrypoints', () => {
     expect(resolveCommand(['/usr/local/bin/ollama-proxy', 'bogus-command'])).toBe('bogus-command')
   })
@@ -39,6 +44,7 @@ describe('resolveCommand', () => {
   })
 
   it('recognizes the versions and update commands', () => {
+    expect(resolveCommand(['/usr/local/bin/ollama-proxy', 'version'])).toBe('version')
     expect(resolveCommand(['/usr/local/bin/ollama-proxy', 'versions'])).toBe('versions')
     expect(resolveCommand(['/usr/local/bin/ollama-proxy', 'update'])).toBe('update')
   })

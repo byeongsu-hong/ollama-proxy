@@ -7,6 +7,7 @@ import {
   SETUP_SYSTEMD_HELP_TEXT,
   UNINSTALL_HELP_TEXT,
   UPDATE_HELP_TEXT,
+  VERSION_HELP_TEXT,
   VERSIONS_HELP_TEXT,
   resolveCliArgs,
   resolveCommand
@@ -14,6 +15,7 @@ import {
 import { createApp, config } from './app'
 import { disableSystemd, setupSystemd, uninstallSystemd } from './systemd'
 import { listVersions, updateBinary } from './update'
+import { CURRENT_VERSION_TAG } from './version'
 
 const startServer = (): void => {
   const app = createApp(config)
@@ -24,7 +26,15 @@ const startServer = (): void => {
     fetch: app.fetch
   })
 
-  console.log(`ollama proxy is running on :${port}`)
+  console.log(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      event: 'startup',
+      executable: process.execPath,
+      port,
+      version: CURRENT_VERSION_TAG
+    })
+  )
 }
 
 const command = resolveCommand(process.argv)
@@ -46,6 +56,15 @@ switch (command) {
     } catch {
       process.exitCode = 1
     }
+    break
+
+  case 'version':
+    if (args.includes('--help') || args.includes('-h')) {
+      console.log(VERSION_HELP_TEXT)
+      break
+    }
+
+    console.log(CURRENT_VERSION_TAG)
     break
 
   case 'update':

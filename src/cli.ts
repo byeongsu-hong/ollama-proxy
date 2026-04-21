@@ -1,5 +1,6 @@
 export const HELP_TEXT = `Usage:
   ollama-proxy serve
+  ollama-proxy version
   ollama-proxy versions
   ollama-proxy update [--check] [--version <tag>]
   ollama-proxy setup-systemd
@@ -9,6 +10,7 @@ export const HELP_TEXT = `Usage:
 
 Commands:
   serve          Start the proxy server (default)
+  version        Print the current binary version
   versions       List published release versions
   update         Update a standalone release binary from GitHub Releases
   setup-systemd  Interactive wizard that installs and enables a systemd service
@@ -54,9 +56,16 @@ Description:
   List published release versions from GitHub Releases.
 `
 
+export const VERSION_HELP_TEXT = `Usage:
+  ollama-proxy version
+
+Description:
+  Print the current binary version.
+`
+
 const INTERNAL_BUN_ENTRYPOINT_PATTERN = /(?:^|[\\/])\$bunfs(?:[\\/]|$)/
 const SCRIPT_ENTRYPOINT_PATTERN = /\.(?:[cm]?[jt]sx?)$/
-const KNOWN_COMMANDS = new Set(['serve', 'versions', 'update', 'setup-systemd', 'disable', 'uninstall', 'help'])
+const KNOWN_COMMANDS = new Set(['serve', 'version', 'versions', 'update', 'setup-systemd', 'disable', 'uninstall', 'help'])
 const HELP_FLAGS = new Set(['--help', '-h'])
 
 const isInternalStandaloneEntrypoint = (value: string): boolean =>
@@ -69,13 +78,21 @@ const isKnownCliToken = (value: string | undefined): boolean =>
   value !== undefined && (KNOWN_COMMANDS.has(value) || HELP_FLAGS.has(value))
 
 export const resolveCliArgs = (argv: string[]): string[] => {
-  const rawArgs = argv.slice(1)
+  const rawArgs = [...argv.slice(1)]
 
   if (rawArgs.length === 0) {
     return []
   }
 
+  while (isInternalStandaloneEntrypoint(rawArgs[0] ?? '')) {
+    rawArgs.shift()
+  }
+
   const [firstArg, secondArg] = rawArgs
+
+  if (rawArgs.length === 0) {
+    return []
+  }
 
   if (isKnownCliToken(firstArg)) {
     return rawArgs

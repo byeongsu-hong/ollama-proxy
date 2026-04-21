@@ -1,6 +1,6 @@
 {
   "name": "@byeongsu-hong/ollama-proxy",
-  "version": "0.1.0",
+  "version": "0.0.3",
   "description": "Minimal Bun + Hono reverse proxy for Ollama chat and embedding APIs",
   "type": "module",
   "author": "byeongsu-hong <hong@byeongsu.dev>",

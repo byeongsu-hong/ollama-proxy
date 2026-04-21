@@ -56,6 +56,12 @@ To list published versions:
 ollama-proxy versions
 ```
 
+To print the currently running binary version:
+
+```bash
+ollama-proxy version
+```
+
 To check whether a newer release is available:
 
 ```bash
@@ -73,7 +79,7 @@ If the binary lives under a root-owned path such as `/usr/local/bin`, the update
 Or install a specific release:
 
 ```bash
-ollama-proxy update --version v0.1.1
+ollama-proxy update --version v0.0.3
 ```
 
 ## Run
@@ -124,7 +130,7 @@ It will:
 4. Run `systemctl daemon-reload`
 5. Run `systemctl enable --now ...`
 
-Logs are written to stdout as JSON lines with request method, path, status, and latency. When Cloudflare Access protection is enabled, logs also include the auth source (`service-token-headers`, `jwt-assertion`, and related failure states) without logging secret values. Sensitive headers and query strings are not logged. After systemd installation:
+Logs are written to stdout as JSON lines. Startup logs include the current binary version, and request logs include method, path, status, and latency. When Cloudflare Access protection is enabled, logs also include the auth source (`service-token-headers`, `jwt-assertion`, and related failure states) without logging secret values. Sensitive headers and query strings are not logged. After systemd installation:
 
 ```bash
 sudo journalctl -u ollama-proxy -f
@@ -238,7 +244,7 @@ curl https://ollama.example.com/v1/chat/completions \
 
 ## Release Process
 
-Tag and push a version such as `v0.1.0`. The GitHub Actions workflow builds standalone binaries for every supported target and uploads them to the release.
+Tag and push a version such as `v0.0.3`. The GitHub Actions workflow builds standalone binaries for every supported target and uploads them to the release.
 
 ## Package Distribution
 

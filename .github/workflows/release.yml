@@ -29,6 +29,8 @@ jobs:
         run: bun run check
 
       - name: Build standalone release binaries
+        env:
+          OLLAMA_PROXY_BUILD_VERSION: ${{ github.ref_name }}
         run: bun run build:release
 
       - name: Create GitHub release

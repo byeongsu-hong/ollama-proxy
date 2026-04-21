@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os'
 import { stdout as defaultStdout, stderr as defaultStderr } from 'node:process'
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import {
-  CURRENT_VERSION_TAG,
   RELEASE_CHECKSUMS_ASSET_NAME,
   RELEASE_REPO,
   detectReleaseAssetName,
@@ -18,6 +17,7 @@ import {
   normalizeVersionTag,
   verifyReleaseAssetChecksum
 } from './releases'
+import { CURRENT_VERSION_TAG } from './version'
 
 type Spawn = (command: string, args: string[]) => SpawnSyncReturns<Buffer>
 

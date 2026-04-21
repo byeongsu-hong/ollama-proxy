@@ -27,7 +27,7 @@ const latestRelease: ReleaseFixture = {
   draft: false,
   prerelease: false,
   published_at: '2026-04-21T00:00:00Z',
-  tag_name: 'v0.1.1'
+  tag_name: 'v0.0.4'
 }
 
 const currentRelease: ReleaseFixture = {
@@ -35,7 +35,7 @@ const currentRelease: ReleaseFixture = {
   draft: false,
   prerelease: false,
   published_at: '2026-04-20T00:00:00Z',
-  tag_name: 'v0.1.0'
+  tag_name: 'v0.0.3'
 }
 
 const latestBinary = new TextEncoder().encode('new-binary')
@@ -50,7 +50,7 @@ const createFetch = (): typeof fetch =>
         return new Response(JSON.stringify(latestRelease), { status: 200 })
       case 'https://api.github.com/repos/byeongsu-hong/ollama-proxy/releases?per_page=20':
         return new Response(JSON.stringify([latestRelease, currentRelease]), { status: 200 })
-      case 'https://api.github.com/repos/byeongsu-hong/ollama-proxy/releases/tags/v0.1.1':
+      case 'https://api.github.com/repos/byeongsu-hong/ollama-proxy/releases/tags/v0.0.4':
         return new Response(JSON.stringify(latestRelease), { status: 200 })
       case 'https://example.test/assets/latest/binary':
         return new Response(latestBinary, { status: 200 })
@@ -64,8 +64,8 @@ const createFetch = (): typeof fetch =>
 describe('update helpers', () => {
   it('parses update arguments', () => {
     expect(parseUpdateArgs(['--check'])).toEqual({ check: true, versionTag: undefined })
-    expect(parseUpdateArgs(['0.1.1'])).toEqual({ check: false, versionTag: 'v0.1.1' })
-    expect(parseUpdateArgs(['--version', 'v0.1.1'])).toEqual({ check: false, versionTag: 'v0.1.1' })
+    expect(parseUpdateArgs(['0.0.4'])).toEqual({ check: false, versionTag: 'v0.0.4' })
+    expect(parseUpdateArgs(['--version', 'v0.0.4'])).toEqual({ check: false, versionTag: 'v0.0.4' })
   })
 
   it('lists published versions and marks current/latest releases', async () => {
@@ -81,8 +81,8 @@ describe('update helpers', () => {
       } as never
     })
 
-    expect(lines.join('')).toContain('v0.1.1\t2026-04-21 (latest)')
-    expect(lines.join('')).toContain('v0.1.0\t2026-04-20 (current)')
+    expect(lines.join('')).toContain('v0.0.4\t2026-04-21 (latest)')
+    expect(lines.join('')).toContain('v0.0.3\t2026-04-20 (current)')
   })
 
   it('checks the latest published version without mutating the binary', async () => {
@@ -100,8 +100,8 @@ describe('update helpers', () => {
       } as never
     })
 
-    expect(lines.join('')).toContain('current\tv0.1.0')
-    expect(lines.join('')).toContain('latest\tv0.1.1')
+    expect(lines.join('')).toContain('current\tv0.0.3')
+    expect(lines.join('')).toContain('latest\tv0.0.4')
   })
 
   it('updates a writable standalone binary in place after verifying checksums', async () => {
@@ -114,7 +114,7 @@ describe('update helpers', () => {
     try {
       await updateBinary({
         arch: 'arm64',
-        args: ['v0.1.1'],
+        args: ['v0.0.4'],
         currentExecutablePath: executablePath,
         currentUid: 1000,
         fetchImpl: createFetch(),
@@ -128,8 +128,8 @@ describe('update helpers', () => {
       })
 
       expect((await readFile(executablePath)).toString()).toBe('new-binary')
-      expect(lines.join('')).toContain(`Updating ${executablePath} from v0.1.0 to v0.1.1`)
-      expect(lines.join('')).toContain('Updated to v0.1.1.')
+      expect(lines.join('')).toContain(`Updating ${executablePath} from v0.0.3 to v0.0.4`)
+      expect(lines.join('')).toContain('Updated to v0.0.4.')
     } finally {
       await rm(tempDir, { force: true, recursive: true })
     }

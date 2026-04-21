@@ -1,6 +1,6 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import packageJson from '../package.json' with { type: 'json' }
+import { CURRENT_VERSION, CURRENT_VERSION_TAG } from './version'
 
 type Spawn = (command: string, args: string[]) => SpawnSyncReturns<Buffer>
 
@@ -56,8 +56,6 @@ const fetchGitHubJson = async <T>(url: string, fetchImpl: typeof fetch, token?: 
   return (await response.json()) as T
 }
 
-export const CURRENT_VERSION = packageJson.version
-export const CURRENT_VERSION_TAG = `v${CURRENT_VERSION}`
 export const RELEASE_REPO = DEFAULT_RELEASE_REPO
 export const RELEASE_CHECKSUMS_ASSET_NAME = CHECKSUMS_ASSET_NAME
 

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { CURRENT_VERSION_TAG, normalizeBuildVersionTag } from '../src/version'
 
 type ReleaseTarget = {
   assetName: string
@@ -21,6 +22,7 @@ const RELEASE_TARGETS: readonly ReleaseTarget[] = [
 const rootDir = resolve(import.meta.dir, '..')
 const entrypoint = resolve(rootDir, 'src/index.ts')
 const outputDir = resolve(rootDir, 'dist/release')
+const buildVersionTag = normalizeBuildVersionTag(process.env.OLLAMA_PROXY_BUILD_VERSION) ?? CURRENT_VERSION_TAG
 
 const selectedTargets = process.argv.slice(2)
 
@@ -58,6 +60,9 @@ for (const { assetName, target } of targets) {
       outfile,
       target
     },
+    define: {
+      __OLLAMA_PROXY_BUILD_VERSION__: JSON.stringify(buildVersionTag)
+    },
     entrypoints: [entrypoint],
     minify: true,
     sourcemap: 'none'
@@ -71,7 +76,7 @@ for (const { assetName, target } of targets) {
   const hash = createHash('sha256')
   hash.update(Buffer.from(await Bun.file(outfile).arrayBuffer()))
   checksumLines.push(`${hash.digest('hex')}  ${assetName}`)
-  console.log(`built ${assetName}`)
+  console.log(`built ${assetName} (${buildVersionTag})`)
 }
 
 await writeFile(resolve(outputDir, 'SHA256SUMS.txt'), `${checksumLines.join('\n')}\n`)
