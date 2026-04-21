@@ -17,6 +17,11 @@ describe('createApp', () => {
 
       expect(response.status).toBe(200)
       expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      expect(url).toBe('http://example.com/api/chat')
+      expect(init.method).toBe('POST')
+      expect(new Headers(init.headers).get('content-type')).toBe('application/json')
+      expect(await new Response(init.body).text()).toBe(JSON.stringify({ model: 'llama3', messages: [] }))
     } finally {
       globalThis.fetch = originalFetch
     }
@@ -56,6 +61,10 @@ describe('createApp', () => {
 
       expect(authorized.status).toBe(200)
       expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
+      expect(url).toBe('http://example.com/api/embed')
+      expect(init.method).toBe('POST')
+      expect(await new Response(init.body).text()).toBe(JSON.stringify({ model: 'mxbai-embed-large', input: 'hello' }))
     } finally {
       globalThis.fetch = originalFetch
     }

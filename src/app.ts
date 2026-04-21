@@ -52,7 +52,7 @@ const loadConfig = (env: Record<string, string | undefined>): Config => {
   const cfAccessClientId = env.CF_ACCESS_CLIENT_ID
   const cfAccessClientSecret = env.CF_ACCESS_CLIENT_SECRET
 
-  if ((cfAccessClientId && !cfAccessClientSecret) || (!cfAccessClientId && cfAccessClientSecret)) {
+  if (Boolean(cfAccessClientId) !== Boolean(cfAccessClientSecret)) {
     throw new Error('CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be configured together')
   }
 
