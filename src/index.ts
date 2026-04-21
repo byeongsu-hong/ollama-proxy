@@ -1,14 +1,48 @@
 #!/usr/bin/env bun
 
+import { fileURLToPath } from 'node:url'
+import { HELP_TEXT, resolveCommand } from './cli'
 import { createApp, config } from './app'
+import { setupSystemd } from './systemd'
 
-const app = createApp(config)
+const startServer = (): void => {
+  const app = createApp(config)
+  const port = Number(process.env.PORT ?? 3000)
 
-const port = Number(process.env.PORT ?? 3000)
+  Bun.serve({
+    port,
+    fetch: app.fetch
+  })
 
-Bun.serve({
-  port,
-  fetch: app.fetch
-})
+  console.log(`ollama proxy is running on :${port}`)
+}
 
-console.log(`ollama proxy is running on :${port}`)
+const command = resolveCommand(process.argv, process.execPath)
+
+switch (command) {
+  case 'serve':
+    startServer()
+    break
+
+  case 'setup-systemd':
+    try {
+      await setupSystemd({
+        currentEntrypointPath: fileURLToPath(import.meta.url),
+        currentExecutablePath: process.execPath
+      })
+    } catch {
+      process.exitCode = 1
+    }
+    break
+
+  case 'help':
+  case '--help':
+  case '-h':
+    console.log(HELP_TEXT)
+    break
+
+  default:
+    console.error(`unknown command: ${command}\n`)
+    console.error(HELP_TEXT)
+    process.exitCode = 1
+}

@@ -1,8 +1,8 @@
 # @byeongsu-hong/ollama-proxy
 
-Minimal Bun + Hono reverse proxy for Ollama that only exposes chat and embedding APIs.
+Minimal reverse proxy for Ollama that only exposes chat and embedding APIs.
 
-It is designed for the common "put Ollama behind Cloudflare Tunnel + Access" setup without exposing the rest of the Ollama API surface.
+It is designed for the common "put Ollama behind Cloudflare Tunnel + Access" setup without exposing the rest of the Ollama API surface. The primary distribution is a standalone release binary built with Bun's executable compiler.
 
 ## Features
 
@@ -24,19 +24,21 @@ All other routes return `404`.
 
 ## Requirements
 
-- Bun `>= 1.3.12`
 - A reachable Ollama server
+- Bun `>= 1.3.12` for local development only
 
 ## Install
 
+Recommended: install a standalone binary from GitHub Releases.
+
 ```bash
-bun add @byeongsu-hong/ollama-proxy
+curl -fsSL https://raw.githubusercontent.com/byeongsu-hong/ollama-proxy/main/install.sh | sh
 ```
 
-To run it without adding it to your project:
+Or download a binary manually from the Releases page:
 
 ```bash
-bunx @byeongsu-hong/ollama-proxy
+https://github.com/byeongsu-hong/ollama-proxy/releases
 ```
 
 ## Run
@@ -44,14 +46,76 @@ bunx @byeongsu-hong/ollama-proxy
 ```bash
 OLLAMA_BASE_URL=http://127.0.0.1:11434 \
 PORT=3000 \
-bunx @byeongsu-hong/ollama-proxy
+ollama-proxy serve
 ```
+
+The default command is `serve`, so this also works:
+
+```bash
+OLLAMA_BASE_URL=http://127.0.0.1:11434 \
+PORT=3000 \
+ollama-proxy
+```
+
+## Release Assets
+
+Release builds are generated for:
+
+- Linux x64 baseline
+- Linux arm64
+- Linux x64 musl
+- Linux arm64 musl
+- macOS x64 baseline
+- macOS arm64
+- Windows x64 baseline
+- Windows arm64
+
+The x64 release uses Bun's baseline targets for broader CPU compatibility. Bun executable target details:
+- https://bun.com/docs/bundler/executables
+
+## systemd
+
+If you installed the standalone binary, the easiest setup is the built-in wizard:
+
+```bash
+sudo ollama-proxy setup-systemd
+```
+
+It will:
+
+1. Copy the current binary into place
+2. Write an environment file under `/etc/...`
+3. Write a unit file under `/etc/systemd/system/...`
+4. Run `systemctl daemon-reload`
+5. Run `systemctl enable --now ...`
+
+Logs are written to stdout as JSON lines with request method, path, status, and latency. Sensitive headers are not logged. After systemd installation:
+
+```bash
+sudo journalctl -u ollama-proxy -f
+```
+
+Static example files are also included under [`deploy/`](./deploy).
+
+## Development
 
 For local development from the repository:
 
 ```bash
 bun install
 bun run dev
+```
+
+You can still run the source version directly with Bun:
+
+```bash
+bun run src/index.ts serve
+```
+
+```bash
+bun run test
+bun run typecheck
+bun run build:release
 ```
 
 ## Environment Variables
@@ -91,18 +155,17 @@ curl https://ollama.example.com/v1/chat/completions \
   -d '{"model":"llama3","messages":[{"role":"user","content":"hello"}]}'
 ```
 
-## Development
+## Release Process
+
+Tag and push a version such as `v0.1.0`. The GitHub Actions workflow builds standalone binaries for every supported target and uploads them to the release.
+
+## Package Distribution
+
+An npm package is still published for source-based Bun users:
 
 ```bash
-bun run test
-bun run typecheck
+bun add @byeongsu-hong/ollama-proxy
 ```
-
-## Publish Checklist
-
-- Confirm you own the npm scope `@byeongsu-hong`
-- Log in with `npm login`
-- Publish with `npm publish --access public`
 
 ## License
 

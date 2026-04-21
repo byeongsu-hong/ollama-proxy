@@ -30,6 +30,7 @@
   },
   "files": [
     "README.md",
+    "deploy",
     "src"
   ],
   "publishConfig": {
@@ -40,6 +41,7 @@
     "start": "bun run src/index.ts",
     "test": "bun test",
     "typecheck": "bun x tsc --noEmit",
+    "build:release": "bun run scripts/build-release.ts",
     "check": "bun run test && bun run typecheck",
     "prepublishOnly": "bun run check"
   },

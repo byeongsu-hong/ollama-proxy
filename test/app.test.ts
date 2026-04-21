@@ -2,8 +2,17 @@ import { describe, expect, it, mock } from 'bun:test'
 import { createApp } from '../src/app'
 
 describe('createApp', () => {
+  type AppConfig = Parameters<typeof createApp>[0]
+
+  const createTestApp = (overrides: Partial<AppConfig> = {}) =>
+    createApp({
+      ollamaBaseUrl: 'http://example.com',
+      log: () => {},
+      ...overrides
+    })
+
   it('allows chat endpoint', async () => {
-    const app = createApp({ ollamaBaseUrl: 'http://example.com' })
+    const app = createTestApp()
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() => Promise.resolve(new Response('ok', { status: 200 })))
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -28,7 +37,7 @@ describe('createApp', () => {
   })
 
   it('blocks non-chat and non-embedding endpoints', async () => {
-    const app = createApp({ ollamaBaseUrl: 'http://example.com' })
+    const app = createTestApp()
 
     const response = await app.request('/api/generate', { method: 'POST' })
 
@@ -36,8 +45,7 @@ describe('createApp', () => {
   })
 
   it('enforces Cloudflare Access service token headers when configured', async () => {
-    const app = createApp({
-      ollamaBaseUrl: 'http://example.com',
+    const app = createTestApp({
       cfAccessClientId: 'id',
       cfAccessClientSecret: 'secret'
     })
@@ -71,8 +79,7 @@ describe('createApp', () => {
   })
 
   it('does not forward Cloudflare Access credentials or cookies upstream', async () => {
-    const app = createApp({
-      ollamaBaseUrl: 'http://example.com',
+    const app = createTestApp({
       cfAccessClientId: 'id',
       cfAccessClientSecret: 'secret'
     })
@@ -110,7 +117,7 @@ describe('createApp', () => {
   })
 
   it('does not forward authorization or hop-by-hop request headers upstream', async () => {
-    const app = createApp({ ollamaBaseUrl: 'http://example.com' })
+    const app = createTestApp()
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() => Promise.resolve(new Response('ok', { status: 200 })))
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -152,7 +159,7 @@ describe('createApp', () => {
   })
 
   it('does not forward client-supplied forwarding or source IP headers upstream', async () => {
-    const app = createApp({ ollamaBaseUrl: 'http://example.com' })
+    const app = createTestApp()
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() => Promise.resolve(new Response('ok', { status: 200 })))
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -192,7 +199,7 @@ describe('createApp', () => {
   })
 
   it('preserves any base path configured in OLLAMA_BASE_URL', async () => {
-    const app = createApp({ ollamaBaseUrl: 'http://example.com/ollama' })
+    const app = createTestApp({ ollamaBaseUrl: 'http://example.com/ollama' })
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() => Promise.resolve(new Response('ok', { status: 200 })))
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -213,7 +220,7 @@ describe('createApp', () => {
   })
 
   it('forwards the request abort signal upstream', async () => {
-    const app = createApp({ ollamaBaseUrl: 'http://example.com' })
+    const app = createTestApp()
     const originalFetch = globalThis.fetch
     const controller = new AbortController()
     const fetchMock = mock((_url: string, init?: RequestInit) => {
@@ -238,7 +245,7 @@ describe('createApp', () => {
   })
 
   it('does not forward unsafe upstream response headers to the client', async () => {
-    const app = createApp({ ollamaBaseUrl: 'http://example.com' })
+    const app = createTestApp()
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() =>
       Promise.resolve(
@@ -275,6 +282,39 @@ describe('createApp', () => {
       expect(response.headers.get('trailer')).toBeNull()
       expect(response.headers.get('transfer-encoding')).toBeNull()
       expect(response.headers.get('upgrade')).toBeNull()
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('logs request metadata without including headers', async () => {
+    const log = mock(() => {})
+    const app = createTestApp({ log })
+    const originalFetch = globalThis.fetch
+    const fetchMock = mock(() => Promise.resolve(new Response('ok', { status: 200 })))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    try {
+      const response = await app.request('/api/chat?stream=false', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer secret',
+          'CF-Access-Client-Secret': 'secret',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ model: 'llama3', messages: [] })
+      })
+
+      expect(response.status).toBe(200)
+      expect(log).toHaveBeenCalledTimes(1)
+      const [line] = log.mock.calls[0] as unknown as [string]
+      const entry = JSON.parse(line) as Record<string, string | number>
+      expect(entry.event).toBe('request')
+      expect(entry.method).toBe('POST')
+      expect(entry.path).toBe('/api/chat?stream=false')
+      expect(entry.status).toBe(200)
+      expect(typeof entry.duration_ms).toBe('number')
+      expect('headers' in entry).toBe(false)
     } finally {
       globalThis.fetch = originalFetch
     }

@@ -1,0 +1,16 @@
+[Unit]
+Description=Ollama Proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/ollama-proxy/ollama-proxy.env
+ExecStart=/usr/local/bin/ollama-proxy serve
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

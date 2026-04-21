@@ -1,10 +1,13 @@
 import { timingSafeEqual } from 'node:crypto'
-import { Hono } from 'hono'
+import { Hono, type MiddlewareHandler } from 'hono'
+
+type LogFn = (message: string) => void
 
 type Config = {
   ollamaBaseUrl: string
   cfAccessClientId?: string
   cfAccessClientSecret?: string
+  log?: LogFn
 }
 
 const ALLOWED_ENDPOINTS: ReadonlySet<string> = new Set([
@@ -65,6 +68,10 @@ const secureEqual = (a: string, b: string): boolean => {
   return left.length === right.length && timingSafeEqual(left, right)
 }
 
+const defaultLog: LogFn = (message) => {
+  console.log(message)
+}
+
 const trimTrailingSlash = (value: string): string => (value.endsWith('/') ? value.slice(0, -1) : value)
 
 const ensureLeadingSlash = (value: string): string => (value.startsWith('/') ? value : `/${value}`)
@@ -81,6 +88,19 @@ const buildTargetUrl = (baseUrl: string, requestUrl: string): string => {
   output.pathname = mergeUrlPath(output.pathname, input.pathname)
   output.search = input.search
   return output.toString()
+}
+
+const formatRequestLog = (request: Request, status: number, durationMs: number): string => {
+  const url = new URL(request.url)
+
+  return JSON.stringify({
+    ts: new Date().toISOString(),
+    event: 'request',
+    method: request.method,
+    path: `${url.pathname}${url.search}`,
+    status,
+    duration_ms: Number(durationMs.toFixed(2))
+  })
 }
 
 const getConnectionHeaderTokens = (headers: Headers): string[] =>
@@ -133,6 +153,20 @@ const hasValidCloudflareAccessHeaders = (request: Request, config: Config): bool
 const isAllowedRequest = (path: string, method: string): boolean =>
   method === ALLOWED_METHOD && ALLOWED_ENDPOINTS.has(path)
 
+const createRequestLogger = (log: LogFn): MiddlewareHandler => {
+  return async (c, next) => {
+    const startedAt = performance.now()
+
+    try {
+      await next()
+    } finally {
+      const durationMs = performance.now() - startedAt
+      const status = c.finalized ? c.res.status : 500
+      log(formatRequestLog(c.req.raw, status, durationMs))
+    }
+  }
+}
+
 const forward = async (request: Request, baseUrl: string): Promise<Response> => {
   const upstream = await fetch(buildTargetUrl(baseUrl, request.url), {
     method: request.method,
@@ -165,6 +199,9 @@ const loadConfig = (env: Record<string, string | undefined>): Config => {
 
 export const createApp = (config: Config): Hono => {
   const app = new Hono()
+  const log = config.log ?? defaultLog
+
+  app.use('*', createRequestLogger(log))
 
   app.use('*', async (c, next) => {
     if (!isAllowedRequest(c.req.path, c.req.method)) {
