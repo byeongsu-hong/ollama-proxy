@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { fileURLToPath } from 'node:url'
-import { HELP_TEXT, resolveCommand } from './cli'
+import { HELP_TEXT, SETUP_SYSTEMD_HELP_TEXT, resolveCliArgs, resolveCommand } from './cli'
 import { createApp, config } from './app'
 import { setupSystemd } from './systemd'
 
@@ -17,7 +17,8 @@ const startServer = (): void => {
   console.log(`ollama proxy is running on :${port}`)
 }
 
-const command = resolveCommand(process.argv, process.execPath)
+const command = resolveCommand(process.argv)
+const args = resolveCliArgs(process.argv)
 
 switch (command) {
   case 'serve':
@@ -25,6 +26,11 @@ switch (command) {
     break
 
   case 'setup-systemd':
+    if (args.includes('--help') || args.includes('-h')) {
+      console.log(SETUP_SYSTEMD_HELP_TEXT)
+      break
+    }
+
     try {
       await setupSystemd({
         currentEntrypointPath: fileURLToPath(import.meta.url),
