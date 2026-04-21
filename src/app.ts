@@ -10,6 +10,14 @@ type Config = {
   log?: LogFn
 }
 
+type CloudflareAccessAuthSource =
+  | 'not-required'
+  | 'jwt-assertion'
+  | 'service-token-headers'
+  | 'partial-service-token-headers'
+  | 'invalid-service-token-headers'
+  | 'missing'
+
 const ALLOWED_ENDPOINTS: ReadonlySet<string> = new Set([
   '/api/chat',
   '/api/embed',
@@ -90,8 +98,39 @@ const buildTargetUrl = (baseUrl: string, requestUrl: string): string => {
   return output.toString()
 }
 
-const formatRequestLog = (request: Request, status: number, durationMs: number): string => {
+const normalizeHeaderValue = (value: string | undefined | null): string | undefined => {
+  const trimmed = value?.trim()
+  return trimmed === '' ? undefined : trimmed
+}
+
+const getCloudflareAccessAuthSource = (request: Request, config: Config): CloudflareAccessAuthSource => {
+  if (!requiresCloudflareAccess(config)) {
+    return 'not-required'
+  }
+
+  if (looksLikeJwt(request.headers.get('Cf-Access-Jwt-Assertion'))) {
+    return 'jwt-assertion'
+  }
+
+  const clientId = normalizeHeaderValue(request.headers.get('CF-Access-Client-Id'))
+  const clientSecret = normalizeHeaderValue(request.headers.get('CF-Access-Client-Secret'))
+
+  if (!clientId && !clientSecret) {
+    return 'missing'
+  }
+
+  if (!clientId || !clientSecret) {
+    return 'partial-service-token-headers'
+  }
+
+  return secureEqual(clientId, config.cfAccessClientId!) && secureEqual(clientSecret, config.cfAccessClientSecret!)
+    ? 'service-token-headers'
+    : 'invalid-service-token-headers'
+}
+
+const formatRequestLog = (request: Request, status: number, durationMs: number, config: Config): string => {
   const url = new URL(request.url)
+  const authSource = getCloudflareAccessAuthSource(request, config)
 
   return JSON.stringify({
     ts: new Date().toISOString(),
@@ -100,7 +139,16 @@ const formatRequestLog = (request: Request, status: number, durationMs: number):
     path: url.pathname,
     has_query: url.search !== '',
     status,
-    duration_ms: Number(durationMs.toFixed(2))
+    duration_ms: Number(durationMs.toFixed(2)),
+    ...(requiresCloudflareAccess(config)
+      ? {
+          cf_access_required: true,
+          cf_access_auth_source: authSource,
+          cf_access_client_id_present: request.headers.has('CF-Access-Client-Id'),
+          cf_access_client_secret_present: request.headers.has('CF-Access-Client-Secret'),
+          cf_access_jwt_assertion_present: request.headers.has('Cf-Access-Jwt-Assertion')
+        }
+      : {})
   })
 }
 
@@ -135,26 +183,18 @@ const buildResponseHeaders = (upstreamHeaders: Headers): Headers => {
 const requiresCloudflareAccess = (config: Config): boolean =>
   Boolean(config.cfAccessClientId && config.cfAccessClientSecret)
 
+const looksLikeJwt = (value: string | null): boolean =>
+  value !== null && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(value)
+
 const hasValidCloudflareAccessHeaders = (request: Request, config: Config): boolean => {
-  if (!requiresCloudflareAccess(config)) {
-    return true
-  }
-
-  const clientId = request.headers.get('CF-Access-Client-Id')
-  const clientSecret = request.headers.get('CF-Access-Client-Secret')
-
-  return Boolean(
-    clientId &&
-      clientSecret &&
-      secureEqual(clientId, config.cfAccessClientId!) &&
-      secureEqual(clientSecret, config.cfAccessClientSecret!)
-  )
+  const source = getCloudflareAccessAuthSource(request, config)
+  return source === 'not-required' || source === 'jwt-assertion' || source === 'service-token-headers'
 }
 
 const isAllowedRequest = (path: string, method: string): boolean =>
   method === ALLOWED_METHOD && ALLOWED_ENDPOINTS.has(path)
 
-const createRequestLogger = (log: LogFn): MiddlewareHandler => {
+const createRequestLogger = (log: LogFn, config: Config): MiddlewareHandler => {
   return async (c, next) => {
     const startedAt = performance.now()
 
@@ -163,10 +203,10 @@ const createRequestLogger = (log: LogFn): MiddlewareHandler => {
     } finally {
       const durationMs = performance.now() - startedAt
       const status = c.finalized ? c.res.status : 500
-      log(formatRequestLog(c.req.raw, status, durationMs))
+        log(formatRequestLog(c.req.raw, status, durationMs, config))
+      }
     }
   }
-}
 
 const forward = async (request: Request, baseUrl: string): Promise<Response> => {
   const upstream = await fetch(buildTargetUrl(baseUrl, request.url), {
@@ -184,8 +224,8 @@ const forward = async (request: Request, baseUrl: string): Promise<Response> => 
 }
 
 const loadConfig = (env: Record<string, string | undefined>): Config => {
-  const cfAccessClientId = env.CF_ACCESS_CLIENT_ID
-  const cfAccessClientSecret = env.CF_ACCESS_CLIENT_SECRET
+  const cfAccessClientId = normalizeHeaderValue(env.CF_ACCESS_CLIENT_ID)
+  const cfAccessClientSecret = normalizeHeaderValue(env.CF_ACCESS_CLIENT_SECRET)
 
   if (Boolean(cfAccessClientId) !== Boolean(cfAccessClientSecret)) {
     throw new Error('CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be configured together')
@@ -202,7 +242,7 @@ export const createApp = (config: Config): Hono => {
   const app = new Hono()
   const log = config.log ?? defaultLog
 
-  app.use('*', createRequestLogger(log))
+  app.use('*', createRequestLogger(log, config))
 
   app.use('*', async (c, next) => {
     if (!isAllowedRequest(c.req.path, c.req.method)) {

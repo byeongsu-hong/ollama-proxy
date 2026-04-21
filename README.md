@@ -35,6 +35,13 @@ Recommended: install a standalone binary from GitHub Releases.
 curl -fsSL https://github.com/byeongsu-hong/ollama-proxy/releases/latest/download/install.sh | sh
 ```
 
+The installer writes to `/usr/local/bin` by default and will invoke `sudo` automatically if that path needs root privileges. To avoid `sudo`, install into a user-writable directory:
+
+```bash
+curl -fsSL https://github.com/byeongsu-hong/ollama-proxy/releases/latest/download/install.sh | \
+  OLLAMA_PROXY_INSTALL_DIR="$HOME/.local/bin" sh
+```
+
 Or download a binary manually from the Releases page:
 
 ```bash
@@ -91,7 +98,7 @@ It will:
 4. Run `systemctl daemon-reload`
 5. Run `systemctl enable --now ...`
 
-Logs are written to stdout as JSON lines with request method, path, status, and latency. Sensitive headers and query strings are not logged. After systemd installation:
+Logs are written to stdout as JSON lines with request method, path, status, and latency. When Cloudflare Access protection is enabled, logs also include the auth source (`service-token-headers`, `jwt-assertion`, and related failure states) without logging secret values. Sensitive headers and query strings are not logged. After systemd installation:
 
 ```bash
 sudo journalctl -u ollama-proxy -f
@@ -127,7 +134,12 @@ bun run build:release
 - `CF_ACCESS_CLIENT_ID`: Optional Cloudflare Access service token client ID.
 - `CF_ACCESS_CLIENT_SECRET`: Optional Cloudflare Access service token client secret.
 
-`CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` must be set together. When configured, every allowed endpoint requires matching `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers.
+`CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` must be set together. When configured, every allowed endpoint requires either:
+
+- matching `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers, or
+- a Cloudflare Access-authenticated request forwarded to origin with `Cf-Access-Jwt-Assertion`
+
+For the common Cloudflare Tunnel + Access setup, the second path is what you usually want. If your origin is directly reachable from the Internet, do not rely on header presence alone. Restrict origin access to `cloudflared` or enable Tunnel-side Access JWT validation.
 
 ## Cloudflare Tunnel + Access
 

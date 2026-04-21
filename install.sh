@@ -7,6 +7,7 @@ INSTALL_DIR="${OLLAMA_PROXY_INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="${OLLAMA_PROXY_BINARY_NAME:-ollama-proxy}"
 VERSION="${OLLAMA_PROXY_VERSION:-latest}"
 CHECKSUMS_NAME="SHA256SUMS.txt"
+SUDO=""
 
 detect_os() {
   case "$(uname -s)" in
@@ -124,6 +125,57 @@ verify_checksum() {
   fi
 }
 
+find_existing_parent_dir() {
+  dir_path="$1"
+
+  while [ ! -d "$dir_path" ]; do
+    next_dir="$(dirname "$dir_path")"
+
+    if [ "$next_dir" = "$dir_path" ]; then
+      break
+    fi
+
+    dir_path="$next_dir"
+  done
+
+  printf '%s' "$dir_path"
+}
+
+prepare_privileged_install() {
+  if [ "$(id -u)" -eq 0 ]; then
+    return 0
+  fi
+
+  target_dir="$1"
+
+  if [ -d "$target_dir" ]; then
+    existing_parent="$target_dir"
+  else
+    existing_parent="$(find_existing_parent_dir "$target_dir")"
+  fi
+
+  if [ -w "$existing_parent" ]; then
+    return 0
+  fi
+
+  if ! command -v sudo >/dev/null 2>&1; then
+    printf '%s\n' "installing to ${target_dir} requires root privileges, but sudo is not available" >&2
+    exit 1
+  fi
+
+  SUDO="sudo"
+  printf '%s\n' "Installing to ${target_dir} requires root privileges. You may be prompted for your sudo password."
+}
+
+run_install_command() {
+  if [ -n "$SUDO" ]; then
+    sudo "$@"
+    return 0
+  fi
+
+  "$@"
+}
+
 main() {
   asset_name="$(detect_asset_name)"
   download_url="$(build_download_url)"
@@ -139,13 +191,14 @@ main() {
   curl -fsSL "$checksums_url" -o "$temp_checksums"
   verify_checksum "$asset_name" "$temp_file" "$temp_checksums"
   chmod +x "$temp_file"
-  mkdir -p "$INSTALL_DIR"
+  prepare_privileged_install "$INSTALL_DIR"
+  run_install_command mkdir -p "$INSTALL_DIR"
 
   if command -v install >/dev/null 2>&1; then
-    install -m 755 "$temp_file" "$destination"
+    run_install_command install -m 755 "$temp_file" "$destination"
   else
-    cp "$temp_file" "$destination"
-    chmod 755 "$destination"
+    run_install_command cp "$temp_file" "$destination"
+    run_install_command chmod 755 "$destination"
   fi
 
   printf '%s\n' "Installed ${destination}"

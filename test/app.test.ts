@@ -44,7 +44,7 @@ describe('createApp', () => {
     expect(response.status).toBe(404)
   })
 
-  it('enforces Cloudflare Access service token headers when configured', async () => {
+  it('requires Cloudflare Access service token headers or a forwarded access JWT when configured', async () => {
     const app = createTestApp({
       cfAccessClientId: 'id',
       cfAccessClientSecret: 'secret'
@@ -52,6 +52,14 @@ describe('createApp', () => {
 
     const unauthorized = await app.request('/api/embed', { method: 'POST' })
     expect(unauthorized.status).toBe(401)
+
+    const malformedJwt = await app.request('/api/embed', {
+      method: 'POST',
+      headers: {
+        'CF-Access-Jwt-Assertion': 'not-a-jwt'
+      }
+    })
+    expect(malformedJwt.status).toBe(401)
 
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() => Promise.resolve(new Response('ok', { status: 200 })))
@@ -73,6 +81,17 @@ describe('createApp', () => {
       expect(url).toBe('http://example.com/api/embed')
       expect(init.method).toBe('POST')
       expect(await new Response(init.body).text()).toBe(JSON.stringify({ model: 'mxbai-embed-large', input: 'hello' }))
+
+      const viaJwtAssertion = await app.request('/api/embed', {
+        method: 'POST',
+        headers: {
+          'CF-Access-Jwt-Assertion': 'header.payload.signature'
+        },
+        body: JSON.stringify({ model: 'mxbai-embed-large', input: 'hello' })
+      })
+
+      expect(viaJwtAssertion.status).toBe(200)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
     } finally {
       globalThis.fetch = originalFetch
     }
@@ -111,6 +130,33 @@ describe('createApp', () => {
       expect(headers.get('cf-access-jwt-assertion')).toBeNull()
       expect(headers.get('cookie')).toBeNull()
       expect(headers.get('content-type')).toBe('application/json')
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  it('accepts trimmed Cloudflare Access service token headers', async () => {
+    const app = createTestApp({
+      cfAccessClientId: 'id',
+      cfAccessClientSecret: 'secret'
+    })
+
+    const originalFetch = globalThis.fetch
+    const fetchMock = mock(() => Promise.resolve(new Response('ok', { status: 200 })))
+    globalThis.fetch = fetchMock as unknown as typeof fetch
+
+    try {
+      const response = await app.request('/api/embed', {
+        method: 'POST',
+        headers: {
+          'CF-Access-Client-Id': ' id ',
+          'CF-Access-Client-Secret': ' secret '
+        },
+        body: JSON.stringify({ model: 'mxbai-embed-large', input: 'hello' })
+      })
+
+      expect(response.status).toBe(200)
+      expect(fetchMock).toHaveBeenCalledTimes(1)
     } finally {
       globalThis.fetch = originalFetch
     }
@@ -289,7 +335,11 @@ describe('createApp', () => {
 
   it('logs request metadata without including headers', async () => {
     const log = mock(() => {})
-    const app = createTestApp({ log })
+    const app = createTestApp({
+      log,
+      cfAccessClientId: 'id',
+      cfAccessClientSecret: 'secret'
+    })
     const originalFetch = globalThis.fetch
     const fetchMock = mock(() => Promise.resolve(new Response('ok', { status: 200 })))
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -298,7 +348,7 @@ describe('createApp', () => {
       const response = await app.request('/api/chat?stream=false', {
         method: 'POST',
         headers: {
-          Authorization: 'Bearer secret',
+          'CF-Access-Client-Id': 'id',
           'CF-Access-Client-Secret': 'secret',
           'Content-Type': 'application/json'
         },
@@ -315,9 +365,44 @@ describe('createApp', () => {
       expect(entry.has_query).toBe(true)
       expect(entry.status).toBe(200)
       expect(typeof entry.duration_ms).toBe('number')
+      expect(entry.cf_access_required).toBe(true)
+      expect(entry.cf_access_auth_source).toBe('service-token-headers')
+      expect(entry.cf_access_client_id_present).toBe(true)
+      expect(entry.cf_access_client_secret_present).toBe(true)
+      expect(entry.cf_access_jwt_assertion_present).toBe(false)
       expect('headers' in entry).toBe(false)
     } finally {
       globalThis.fetch = originalFetch
     }
+  })
+
+  it('logs why Cloudflare Access authentication failed without exposing secret values', async () => {
+    const log = mock(() => {})
+    const app = createTestApp({
+      log,
+      cfAccessClientId: 'id',
+      cfAccessClientSecret: 'secret'
+    })
+
+    const response = await app.request('/api/chat', {
+      method: 'POST',
+      headers: {
+        'CF-Access-Client-Id': 'wrong-id',
+        'CF-Access-Client-Secret': 'wrong-secret',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ model: 'llama3', messages: [] })
+    })
+
+    expect(response.status).toBe(401)
+    expect(log).toHaveBeenCalledTimes(1)
+    const [line] = log.mock.calls[0] as unknown as [string]
+    const entry = JSON.parse(line) as Record<string, string | number | boolean>
+    expect(entry.cf_access_auth_source).toBe('invalid-service-token-headers')
+    expect(entry.cf_access_client_id_present).toBe(true)
+    expect(entry.cf_access_client_secret_present).toBe(true)
+    expect(entry.cf_access_jwt_assertion_present).toBe(false)
+    expect(JSON.stringify(entry)).not.toContain('wrong-id')
+    expect(JSON.stringify(entry)).not.toContain('wrong-secret')
   })
 })
