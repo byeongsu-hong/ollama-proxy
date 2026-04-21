@@ -50,6 +50,32 @@ https://github.com/byeongsu-hong/ollama-proxy/releases
 
 The installer downloads the matching release asset and verifies it against the published `SHA256SUMS.txt`.
 
+To list published versions:
+
+```bash
+ollama-proxy versions
+```
+
+To check whether a newer release is available:
+
+```bash
+ollama-proxy update --check
+```
+
+To update a standalone installed binary in place:
+
+```bash
+ollama-proxy update
+```
+
+If the binary lives under a root-owned path such as `/usr/local/bin`, the updater will prompt for `sudo` when replacing it.
+
+Or install a specific release:
+
+```bash
+ollama-proxy update --version v0.1.1
+```
+
 ## Run
 
 ```bash

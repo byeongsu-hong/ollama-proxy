@@ -6,11 +6,14 @@ import {
   HELP_TEXT,
   SETUP_SYSTEMD_HELP_TEXT,
   UNINSTALL_HELP_TEXT,
+  UPDATE_HELP_TEXT,
+  VERSIONS_HELP_TEXT,
   resolveCliArgs,
   resolveCommand
 } from './cli'
 import { createApp, config } from './app'
 import { disableSystemd, setupSystemd, uninstallSystemd } from './systemd'
+import { listVersions, updateBinary } from './update'
 
 const startServer = (): void => {
   const app = createApp(config)
@@ -30,6 +33,35 @@ const args = resolveCliArgs(process.argv)
 switch (command) {
   case 'serve':
     startServer()
+    break
+
+  case 'versions':
+    if (args.includes('--help') || args.includes('-h')) {
+      console.log(VERSIONS_HELP_TEXT)
+      break
+    }
+
+    try {
+      await listVersions()
+    } catch {
+      process.exitCode = 1
+    }
+    break
+
+  case 'update':
+    if (args.includes('--help') || args.includes('-h')) {
+      console.log(UPDATE_HELP_TEXT)
+      break
+    }
+
+    try {
+      await updateBinary({
+        args: args.slice(1),
+        currentExecutablePath: process.execPath
+      })
+    } catch {
+      process.exitCode = 1
+    }
     break
 
   case 'setup-systemd':

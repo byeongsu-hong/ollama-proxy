@@ -38,6 +38,11 @@ describe('resolveCommand', () => {
     expect(resolveCommand(['/usr/local/bin/ollama-proxy', 'disable'])).toBe('disable')
   })
 
+  it('recognizes the versions and update commands', () => {
+    expect(resolveCommand(['/usr/local/bin/ollama-proxy', 'versions'])).toBe('versions')
+    expect(resolveCommand(['/usr/local/bin/ollama-proxy', 'update'])).toBe('update')
+  })
+
   it('accepts help flags directly in source mode', () => {
     expect(resolveCliArgs(['/usr/local/bin/bun', '/repo/src/index.ts', '--help'])).toEqual(['--help'])
   })

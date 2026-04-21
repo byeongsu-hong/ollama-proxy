@@ -1,5 +1,7 @@
 export const HELP_TEXT = `Usage:
   ollama-proxy serve
+  ollama-proxy versions
+  ollama-proxy update [--check] [--version <tag>]
   ollama-proxy setup-systemd
   ollama-proxy disable
   ollama-proxy uninstall
@@ -7,6 +9,8 @@ export const HELP_TEXT = `Usage:
 
 Commands:
   serve          Start the proxy server (default)
+  versions       List published release versions
+  update         Update a standalone release binary from GitHub Releases
   setup-systemd  Interactive wizard that installs and enables a systemd service
   disable        Interactive wizard that disables and stops a systemd service
   uninstall      Interactive wizard that disables and removes a systemd service
@@ -34,9 +38,25 @@ Description:
   Interactive wizard that disables and stops a systemd service on Linux.
 `
 
+export const UPDATE_HELP_TEXT = `Usage:
+  ollama-proxy update
+  ollama-proxy update --check
+  ollama-proxy update --version <tag>
+
+Description:
+  Update a standalone release binary from GitHub Releases.
+`
+
+export const VERSIONS_HELP_TEXT = `Usage:
+  ollama-proxy versions
+
+Description:
+  List published release versions from GitHub Releases.
+`
+
 const INTERNAL_BUN_ENTRYPOINT_PATTERN = /(?:^|[\\/])\$bunfs(?:[\\/]|$)/
 const SCRIPT_ENTRYPOINT_PATTERN = /\.(?:[cm]?[jt]sx?)$/
-const KNOWN_COMMANDS = new Set(['serve', 'setup-systemd', 'disable', 'uninstall', 'help'])
+const KNOWN_COMMANDS = new Set(['serve', 'versions', 'update', 'setup-systemd', 'disable', 'uninstall', 'help'])
 const HELP_FLAGS = new Set(['--help', '-h'])
 
 const isInternalStandaloneEntrypoint = (value: string): boolean =>
