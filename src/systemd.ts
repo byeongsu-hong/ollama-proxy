@@ -1,5 +1,5 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
-import { chmod, copyFile, mkdir, writeFile } from 'node:fs/promises'
+import { chmod, copyFile, mkdir, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { stderr as defaultStderr, stdin as defaultStdin, stdout as defaultStdout } from 'node:process'
@@ -40,11 +40,32 @@ export type EnvironmentConfig = {
 type SetupSystemdOptions = {
   currentExecutablePath: string
   currentEntrypointPath: string
+  currentUid?: number
   env?: Record<string, string | undefined>
   platform?: NodeJS.Platform
+  prompter?: Prompter
   spawn?: Spawn
   stderr?: typeof defaultStderr
   stdin?: typeof defaultStdin
+  stdout?: typeof defaultStdout
+}
+
+type UninstallSystemdOptions = {
+  currentExecutablePath: string
+  currentUid?: number
+  platform?: NodeJS.Platform
+  prompter?: Prompter
+  spawn?: Spawn
+  stderr?: typeof defaultStderr
+  stdout?: typeof defaultStdout
+}
+
+type DisableSystemdOptions = {
+  currentUid?: number
+  platform?: NodeJS.Platform
+  prompter?: Prompter
+  spawn?: Spawn
+  stderr?: typeof defaultStderr
   stdout?: typeof defaultStdout
 }
 
@@ -217,10 +238,10 @@ const installStandaloneBinary = async (fromPath: string, toPath: string): Promis
   await chmod(toPath, 0o755)
 }
 
-const runSystemctl = (spawn: Spawn, args: string[]): void => {
+const runSystemctl = (spawn: Spawn, args: string[], allowFailure = false): void => {
   const result = spawn('systemctl', args)
 
-  if (result.status !== 0) {
+  if (result.status !== 0 && !allowFailure) {
     throw new Error(`systemctl ${args.join(' ')} failed with exit code ${result.status ?? 'unknown'}`)
   }
 }
@@ -230,26 +251,71 @@ const defaultSpawn: Spawn = (command, args) =>
     stdio: 'inherit'
   })
 
+const assertSystemdSupported = (
+  action: 'setup-systemd' | 'disable' | 'uninstall',
+  platform: NodeJS.Platform,
+  currentUid: number
+): void => {
+  if (platform !== 'linux') {
+    throw new Error(`${action} is only supported on Linux`)
+  }
+
+  if (currentUid !== 0) {
+    throw new Error(`${action} must be run as root, for example with sudo`)
+  }
+}
+
+export const disableSystemd = async ({
+  currentUid = typeof process.getuid === 'function' ? process.getuid() : 0,
+  platform = process.platform,
+  prompter: providedPrompter,
+  spawn = defaultSpawn,
+  stderr = defaultStderr,
+  stdout = defaultStdout
+}: DisableSystemdOptions): Promise<void> => {
+  assertSystemdSupported('disable', platform, currentUid)
+
+  const prompter = providedPrompter ?? createPrompter(defaultStdin, stdout)
+
+  try {
+    const serviceName = await promptText(prompter, 'Service name', DEFAULT_SERVICE_NAME)
+
+    stdout.write(`\nDisabling ${serviceName}\n`)
+
+    const confirmed = await promptYesNo(prompter, 'Disable and stop the service now', true)
+
+    if (!confirmed) {
+      stdout.write('Aborted.\n')
+      return
+    }
+
+    runSystemctl(spawn, ['disable', '--now', serviceName])
+    runSystemctl(spawn, ['reset-failed', serviceName], true)
+    stdout.write(`Disabled ${serviceName}.\n`)
+  } catch (error) {
+    stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    throw error
+  } finally {
+    prompter.close()
+  }
+}
+
 export const setupSystemd = async ({
   currentEntrypointPath,
   currentExecutablePath,
+  currentUid = typeof process.getuid === 'function' ? process.getuid() : 0,
   env = process.env,
   platform = process.platform,
+  prompter: providedPrompter,
   spawn = defaultSpawn,
   stderr = defaultStderr,
   stdin = defaultStdin,
   stdout = defaultStdout
 }: SetupSystemdOptions): Promise<void> => {
-  if (platform !== 'linux') {
-    throw new Error('setup-systemd is only supported on Linux')
-  }
-
-  if (typeof process.getuid === 'function' && process.getuid() !== 0) {
-    throw new Error('setup-systemd must be run as root, for example with sudo')
-  }
+  assertSystemdSupported('setup-systemd', platform, currentUid)
 
   const runtimeKind: RuntimeKind = isStandaloneRuntime(currentExecutablePath) ? 'standalone' : 'source'
-  const prompter = createPrompter(stdin, stdout)
+  const prompter = providedPrompter ?? createPrompter(stdin, stdout)
 
   try {
     const serviceName = await promptText(prompter, 'Service name', DEFAULT_SERVICE_NAME)
@@ -339,6 +405,70 @@ export const setupSystemd = async ({
     stdout.write(
       `Installed ${serviceName}. Inspect logs with:\n  journalctl -u ${serviceName} -f\n`
     )
+  } catch (error) {
+    stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
+    throw error
+  } finally {
+    prompter.close()
+  }
+}
+
+export const uninstallSystemd = async ({
+  currentExecutablePath,
+  currentUid = typeof process.getuid === 'function' ? process.getuid() : 0,
+  platform = process.platform,
+  prompter: providedPrompter,
+  spawn = defaultSpawn,
+  stderr = defaultStderr,
+  stdout = defaultStdout
+}: UninstallSystemdOptions): Promise<void> => {
+  assertSystemdSupported('uninstall', platform, currentUid)
+
+  const runtimeKind: RuntimeKind = isStandaloneRuntime(currentExecutablePath) ? 'standalone' : 'source'
+  const prompter = providedPrompter ?? createPrompter(defaultStdin, stdout)
+
+  try {
+    const serviceName = await promptText(prompter, 'Service name', DEFAULT_SERVICE_NAME)
+    const serviceFilePath = await promptText(prompter, 'Service unit path', DEFAULT_SERVICE_FILE_PATH(serviceName))
+    const envFilePath = await promptText(prompter, 'Environment file path', DEFAULT_ENV_FILE_PATH(serviceName))
+    const shouldRemoveBinary = await promptYesNo(
+      prompter,
+      'Remove installed standalone binary',
+      runtimeKind === 'standalone'
+    )
+    const binaryPath = shouldRemoveBinary
+      ? await promptText(
+          prompter,
+          'Binary path',
+          runtimeKind === 'standalone' ? currentExecutablePath : DEFAULT_BINARY_PATH
+        )
+      : undefined
+
+    stdout.write(`\nRemoving ${serviceName}\n- unit: ${serviceFilePath}\n- env: ${envFilePath}\n`)
+
+    if (binaryPath) {
+      stdout.write(`- binary: ${binaryPath}\n`)
+    }
+
+    const confirmed = await promptYesNo(prompter, 'Disable the service and remove these files now', true)
+
+    if (!confirmed) {
+      stdout.write('Aborted.\n')
+      return
+    }
+
+    runSystemctl(spawn, ['disable', '--now', serviceName], true)
+    runSystemctl(spawn, ['reset-failed', serviceName], true)
+
+    await rm(serviceFilePath, { force: true })
+    await rm(envFilePath, { force: true })
+
+    if (binaryPath) {
+      await rm(binaryPath, { force: true })
+    }
+
+    runSystemctl(spawn, ['daemon-reload'])
+    stdout.write(`Removed ${serviceName}.\n`)
   } catch (error) {
     stderr.write(`${error instanceof Error ? error.message : String(error)}\n`)
     throw error

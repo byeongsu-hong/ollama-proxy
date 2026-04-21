@@ -30,6 +30,14 @@ describe('resolveCommand', () => {
     expect(resolveCommand(['/usr/local/bin/ollama-proxy', 'bogus-command'])).toBe('bogus-command')
   })
 
+  it('recognizes the uninstall command', () => {
+    expect(resolveCommand(['/usr/local/bin/ollama-proxy', 'uninstall'])).toBe('uninstall')
+  })
+
+  it('recognizes the disable command', () => {
+    expect(resolveCommand(['/usr/local/bin/ollama-proxy', 'disable'])).toBe('disable')
+  })
+
   it('accepts help flags directly in source mode', () => {
     expect(resolveCliArgs(['/usr/local/bin/bun', '/repo/src/index.ts', '--help'])).toEqual(['--help'])
   })

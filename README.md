@@ -104,6 +104,20 @@ Logs are written to stdout as JSON lines with request method, path, status, and 
 sudo journalctl -u ollama-proxy -f
 ```
 
+To disable and remove the service later:
+
+```bash
+sudo ollama-proxy uninstall
+```
+
+The uninstall wizard disables and stops the unit, removes the systemd unit file and environment file, runs `systemctl daemon-reload`, and can optionally remove the installed standalone binary.
+
+If you only want to stop the service and remove it from startup without deleting files:
+
+```bash
+sudo ollama-proxy disable
+```
+
 Static example files are also included under [`deploy/`](./deploy).
 
 ## Development

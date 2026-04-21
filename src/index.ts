@@ -1,9 +1,16 @@
 #!/usr/bin/env bun
 
 import { fileURLToPath } from 'node:url'
-import { HELP_TEXT, SETUP_SYSTEMD_HELP_TEXT, resolveCliArgs, resolveCommand } from './cli'
+import {
+  DISABLE_HELP_TEXT,
+  HELP_TEXT,
+  SETUP_SYSTEMD_HELP_TEXT,
+  UNINSTALL_HELP_TEXT,
+  resolveCliArgs,
+  resolveCommand
+} from './cli'
 import { createApp, config } from './app'
-import { setupSystemd } from './systemd'
+import { disableSystemd, setupSystemd, uninstallSystemd } from './systemd'
 
 const startServer = (): void => {
   const app = createApp(config)
@@ -36,6 +43,34 @@ switch (command) {
         currentEntrypointPath: fileURLToPath(import.meta.url),
         currentExecutablePath: process.execPath
       })
+    } catch {
+      process.exitCode = 1
+    }
+    break
+
+  case 'uninstall':
+    if (args.includes('--help') || args.includes('-h')) {
+      console.log(UNINSTALL_HELP_TEXT)
+      break
+    }
+
+    try {
+      await uninstallSystemd({
+        currentExecutablePath: process.execPath
+      })
+    } catch {
+      process.exitCode = 1
+    }
+    break
+
+  case 'disable':
+    if (args.includes('--help') || args.includes('-h')) {
+      console.log(DISABLE_HELP_TEXT)
+      break
+    }
+
+    try {
+      await disableSystemd({})
     } catch {
       process.exitCode = 1
     }
