@@ -7,15 +7,57 @@ type Config = {
   cfAccessClientSecret?: string
 }
 
-const ALLOWED_ENDPOINTS = [
+const ALLOWED_ENDPOINTS: ReadonlySet<string> = new Set([
   '/api/chat',
   '/api/embed',
   '/api/embeddings',
   '/v1/chat/completions',
   '/v1/embeddings'
-] as const
+] as const)
 
 const ALLOWED_METHOD = 'POST'
+
+const REQUEST_HEADERS_TO_STRIP = new Set([
+  'authorization',
+  'cf-connecting-ip',
+  'cf-access-client-id',
+  'cf-access-client-secret',
+  'cf-access-token',
+  'cf-access-jwt-assertion',
+  'connection',
+  'cookie',
+  'forwarded',
+  'host'
+] as const)
+
+const HOP_BY_HOP_REQUEST_HEADERS = new Set([
+  'keep-alive',
+  'proxy-authenticate',
+  'proxy-authorization',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade'
+] as const)
+
+const FORWARDING_REQUEST_HEADERS = new Set([
+  'true-client-ip',
+  'x-forwarded-for',
+  'x-forwarded-host',
+  'x-forwarded-port',
+  'x-forwarded-proto',
+  'x-real-ip'
+] as const)
+
+const RESPONSE_HEADERS_TO_STRIP = new Set([
+  'connection',
+  'keep-alive',
+  'proxy-authenticate',
+  'set-cookie',
+  'trailer',
+  'transfer-encoding',
+  'upgrade'
+] as const)
 
 const secureEqual = (a: string, b: string): boolean => {
   const left = Buffer.from(a)
@@ -23,28 +65,86 @@ const secureEqual = (a: string, b: string): boolean => {
   return left.length === right.length && timingSafeEqual(left, right)
 }
 
+const trimTrailingSlash = (value: string): string => (value.endsWith('/') ? value.slice(0, -1) : value)
+
+const ensureLeadingSlash = (value: string): string => (value.startsWith('/') ? value : `/${value}`)
+
+const mergeUrlPath = (basePath: string, requestPath: string): string => {
+  const normalizedBasePath = basePath === '/' ? '' : trimTrailingSlash(basePath)
+  const normalizedRequestPath = ensureLeadingSlash(requestPath)
+  return `${normalizedBasePath}${normalizedRequestPath}` || '/'
+}
+
 const buildTargetUrl = (baseUrl: string, requestUrl: string): string => {
   const input = new URL(requestUrl)
   const output = new URL(baseUrl)
-  output.pathname = input.pathname
+  output.pathname = mergeUrlPath(output.pathname, input.pathname)
   output.search = input.search
   return output.toString()
 }
 
-const forward = async (request: Request, baseUrl: string): Promise<Response> => {
-  const headers = new Headers(request.headers)
-  headers.delete('host')
+const getConnectionHeaderTokens = (headers: Headers): string[] =>
+  (headers.get('connection') ?? '')
+    .split(',')
+    .map((token) => token.trim().toLowerCase())
+    .filter(Boolean)
 
+const deleteHeaders = (headers: Headers, names: Iterable<string>): void => {
+  for (const header of names) {
+    headers.delete(header)
+  }
+}
+
+const buildForwardHeaders = (requestHeaders: Headers): Headers => {
+  const headers = new Headers(requestHeaders)
+  deleteHeaders(headers, REQUEST_HEADERS_TO_STRIP)
+  deleteHeaders(headers, HOP_BY_HOP_REQUEST_HEADERS)
+  deleteHeaders(headers, FORWARDING_REQUEST_HEADERS)
+  deleteHeaders(headers, getConnectionHeaderTokens(requestHeaders))
+  return headers
+}
+
+const buildResponseHeaders = (upstreamHeaders: Headers): Headers => {
+  const headers = new Headers(upstreamHeaders)
+  deleteHeaders(headers, RESPONSE_HEADERS_TO_STRIP)
+  deleteHeaders(headers, getConnectionHeaderTokens(upstreamHeaders))
+  return headers
+}
+
+const requiresCloudflareAccess = (config: Config): boolean =>
+  Boolean(config.cfAccessClientId && config.cfAccessClientSecret)
+
+const hasValidCloudflareAccessHeaders = (request: Request, config: Config): boolean => {
+  if (!requiresCloudflareAccess(config)) {
+    return true
+  }
+
+  const clientId = request.headers.get('CF-Access-Client-Id')
+  const clientSecret = request.headers.get('CF-Access-Client-Secret')
+
+  return Boolean(
+    clientId &&
+      clientSecret &&
+      secureEqual(clientId, config.cfAccessClientId!) &&
+      secureEqual(clientSecret, config.cfAccessClientSecret!)
+  )
+}
+
+const isAllowedRequest = (path: string, method: string): boolean =>
+  method === ALLOWED_METHOD && ALLOWED_ENDPOINTS.has(path)
+
+const forward = async (request: Request, baseUrl: string): Promise<Response> => {
   const upstream = await fetch(buildTargetUrl(baseUrl, request.url), {
     method: request.method,
-    headers,
-    body: request.body
+    headers: buildForwardHeaders(request.headers),
+    body: request.body,
+    signal: request.signal
   })
 
   return new Response(upstream.body, {
     status: upstream.status,
     statusText: upstream.statusText,
-    headers: upstream.headers
+    headers: buildResponseHeaders(upstream.headers)
   })
 }
 
@@ -67,22 +167,12 @@ export const createApp = (config: Config): Hono => {
   const app = new Hono()
 
   app.use('*', async (c, next) => {
-    if (!ALLOWED_ENDPOINTS.includes(c.req.path as (typeof ALLOWED_ENDPOINTS)[number]) || c.req.method !== ALLOWED_METHOD) {
+    if (!isAllowedRequest(c.req.path, c.req.method)) {
       return c.json({ error: 'endpoint not allowed' }, 404)
     }
 
-    if (config.cfAccessClientId && config.cfAccessClientSecret) {
-      const clientId = c.req.header('CF-Access-Client-Id')
-      const clientSecret = c.req.header('CF-Access-Client-Secret')
-
-      if (
-        !clientId ||
-        !clientSecret ||
-        !secureEqual(clientId, config.cfAccessClientId) ||
-        !secureEqual(clientSecret, config.cfAccessClientSecret)
-      ) {
-        return c.json({ error: 'unauthorized' }, 401)
-      }
+    if (!hasValidCloudflareAccessHeaders(c.req.raw, config)) {
+      return c.json({ error: 'unauthorized' }, 401)
     }
 
     await next()
