@@ -1,12 +1,47 @@
 {
-  "name": "ollama-proxy",
+  "name": "@byeongsu-hong/ollama-proxy",
   "version": "0.1.0",
-  "private": true,
+  "description": "Minimal Bun + Hono reverse proxy for Ollama chat and embedding APIs",
   "type": "module",
+  "author": "byeongsu-hong <hong@byeongsu.dev>",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/byeongsu-hong/ollama-proxy#readme",
+  "bugs": {
+    "url": "https://github.com/byeongsu-hong/ollama-proxy/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/byeongsu-hong/ollama-proxy.git"
+  },
+  "keywords": [
+    "bun",
+    "cloudflare-access",
+    "hono",
+    "ollama",
+    "proxy",
+    "reverse-proxy"
+  ],
+  "packageManager": "bun@1.3.12",
+  "engines": {
+    "bun": ">=1.3.12"
+  },
+  "bin": {
+    "ollama-proxy": "./src/index.ts"
+  },
+  "files": [
+    "README.md",
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "typecheck": "bun x tsc --noEmit",
+    "check": "bun run test && bun run typecheck",
+    "prepublishOnly": "bun run check"
   },
   "dependencies": {
     "hono": "^4.8.3"

@@ -1,3 +1,5 @@
+#!/usr/bin/env bun
+
 import { createApp, config } from './app'
 
 const app = createApp(config)
