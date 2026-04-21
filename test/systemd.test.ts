@@ -70,7 +70,7 @@ describe('systemd helpers', () => {
 
   it('detects whether the current process is a standalone binary', () => {
     expect(isStandaloneRuntime('/usr/local/bin/ollama-proxy')).toBe(true)
-    expect(isStandaloneRuntime('/Users/eddy/.bun/bin/bun')).toBe(false)
+    expect(isStandaloneRuntime('/home/tester/.bun/bin/bun')).toBe(false)
   })
 
   it('disables a systemd service without removing files', async () => {
