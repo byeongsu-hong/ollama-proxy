@@ -167,6 +167,33 @@ bun run typecheck
 bun run build:release
 ```
 
+## Docker E2E
+
+For a full local end-to-end check, the repository includes a Docker-based test stack with:
+
+- `proxy`: this app
+- `mock-ollama`: a lightweight upstream fixture
+
+Bring the stack up manually:
+
+```bash
+bun run docker:e2e:up
+bun run test:e2e
+bun run docker:e2e:down
+```
+
+Or run the whole flow with automatic cleanup:
+
+```bash
+bun run test:e2e:docker
+```
+
+The stack binds the proxy to `127.0.0.1:13000` by default so it does not fight with a local dev server on port `3000`. Override it if needed:
+
+```bash
+OLLAMA_PROXY_E2E_PORT=18080 bun run test:e2e:docker
+```
+
 ## Environment Variables
 
 - `PORT`: Port to listen on. Defaults to `3000`.

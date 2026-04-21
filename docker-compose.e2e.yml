@@ -1,0 +1,26 @@
+name: ollama-proxy-e2e
+
+services:
+  mock-ollama:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["test/fixtures/mock-ollama.ts"]
+    environment:
+      MOCK_OLLAMA_PREFIX: /ollama
+      PORT: 11434
+
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["src/index.ts", "serve"]
+    depends_on:
+      - mock-ollama
+    environment:
+      CF_ACCESS_CLIENT_ID: test-id
+      CF_ACCESS_CLIENT_SECRET: test-secret
+      OLLAMA_BASE_URL: http://mock-ollama:11434/ollama
+      PORT: 3000
+    ports:
+      - "${OLLAMA_PROXY_E2E_PORT:-13000}:3000"
