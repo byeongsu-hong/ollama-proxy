@@ -97,7 +97,8 @@ const formatRequestLog = (request: Request, status: number, durationMs: number):
     ts: new Date().toISOString(),
     event: 'request',
     method: request.method,
-    path: `${url.pathname}${url.search}`,
+    path: url.pathname,
+    has_query: url.search !== '',
     status,
     duration_ms: Number(durationMs.toFixed(2))
   })

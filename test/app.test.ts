@@ -308,10 +308,11 @@ describe('createApp', () => {
       expect(response.status).toBe(200)
       expect(log).toHaveBeenCalledTimes(1)
       const [line] = log.mock.calls[0] as unknown as [string]
-      const entry = JSON.parse(line) as Record<string, string | number>
+      const entry = JSON.parse(line) as Record<string, string | number | boolean>
       expect(entry.event).toBe('request')
       expect(entry.method).toBe('POST')
-      expect(entry.path).toBe('/api/chat?stream=false')
+      expect(entry.path).toBe('/api/chat')
+      expect(entry.has_query).toBe(true)
       expect(entry.status).toBe(200)
       expect(typeof entry.duration_ms).toBe('number')
       expect('headers' in entry).toBe(false)

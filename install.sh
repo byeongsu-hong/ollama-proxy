@@ -6,6 +6,7 @@ REPO="${OLLAMA_PROXY_REPO:-byeongsu-hong/ollama-proxy}"
 INSTALL_DIR="${OLLAMA_PROXY_INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="${OLLAMA_PROXY_BINARY_NAME:-ollama-proxy}"
 VERSION="${OLLAMA_PROXY_VERSION:-latest}"
+CHECKSUMS_NAME="SHA256SUMS.txt"
 
 detect_os() {
   case "$(uname -s)" in
@@ -77,16 +78,66 @@ build_download_url() {
   printf '%s' "https://github.com/${REPO}/releases/download/${VERSION}/${asset_name}"
 }
 
+build_checksums_url() {
+  if [ "$VERSION" = "latest" ]; then
+    printf '%s' "https://github.com/${REPO}/releases/latest/download/${CHECKSUMS_NAME}"
+    return 0
+  fi
+
+  printf '%s' "https://github.com/${REPO}/releases/download/${VERSION}/${CHECKSUMS_NAME}"
+}
+
+compute_sha256() {
+  file_path="$1"
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file_path" | awk '{print $1}'
+    return 0
+  fi
+
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file_path" | awk '{print $1}'
+    return 0
+  fi
+
+  printf '%s\n' "sha256 tool not found (need sha256sum or shasum)" >&2
+  exit 1
+}
+
+verify_checksum() {
+  asset_name="$1"
+  file_path="$2"
+  checksums_path="$3"
+
+  expected="$(awk -v asset="$asset_name" '$2 == asset {print $1}' "$checksums_path")"
+
+  if [ -z "$expected" ]; then
+    printf '%s\n' "missing checksum for ${asset_name}" >&2
+    exit 1
+  fi
+
+  actual="$(compute_sha256 "$file_path")"
+
+  if [ "$expected" != "$actual" ]; then
+    printf '%s\n' "checksum verification failed for ${asset_name}" >&2
+    exit 1
+  fi
+}
+
 main() {
   asset_name="$(detect_asset_name)"
   download_url="$(build_download_url)"
+  checksums_url="$(build_checksums_url)"
   temp_file="$(mktemp "${TMPDIR:-/tmp}/ollama-proxy.XXXXXX")"
+  temp_checksums="$(mktemp "${TMPDIR:-/tmp}/ollama-proxy-checksums.XXXXXX")"
   destination="${INSTALL_DIR%/}/${BINARY_NAME}"
 
-  trap 'rm -f "$temp_file"' EXIT INT TERM
+  trap 'rm -f "$temp_file" "$temp_checksums"' EXIT INT TERM
 
   printf '%s\n' "Downloading ${asset_name} from ${download_url}"
   curl -fsSL "$download_url" -o "$temp_file"
+  curl -fsSL "$checksums_url" -o "$temp_checksums"
+  verify_checksum "$asset_name" "$temp_file" "$temp_checksums"
   chmod +x "$temp_file"
   mkdir -p "$INSTALL_DIR"
 

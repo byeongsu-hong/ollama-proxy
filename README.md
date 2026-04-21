@@ -32,7 +32,7 @@ All other routes return `404`.
 Recommended: install a standalone binary from GitHub Releases.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/byeongsu-hong/ollama-proxy/main/install.sh | sh
+curl -fsSL https://github.com/byeongsu-hong/ollama-proxy/releases/latest/download/install.sh | sh
 ```
 
 Or download a binary manually from the Releases page:
@@ -40,6 +40,8 @@ Or download a binary manually from the Releases page:
 ```bash
 https://github.com/byeongsu-hong/ollama-proxy/releases
 ```
+
+The installer downloads the matching release asset and verifies it against the published `SHA256SUMS.txt`.
 
 ## Run
 
@@ -89,7 +91,7 @@ It will:
 4. Run `systemctl daemon-reload`
 5. Run `systemctl enable --now ...`
 
-Logs are written to stdout as JSON lines with request method, path, status, and latency. Sensitive headers are not logged. After systemd installation:
+Logs are written to stdout as JSON lines with request method, path, status, and latency. Sensitive headers and query strings are not logged. After systemd installation:
 
 ```bash
 sudo journalctl -u ollama-proxy -f

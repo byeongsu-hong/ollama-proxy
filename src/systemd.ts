@@ -83,6 +83,33 @@ const promptOptionalText = async (
   defaultValue?: string
 ): Promise<string | undefined> => normalizeOptionalValue(await promptText(prompter, label, defaultValue))
 
+const setTerminalEcho = (spawn: Spawn, enabled: boolean): boolean => {
+  const result = spawn('stty', [enabled ? 'echo' : '-echo'])
+  return result.status === 0
+}
+
+const promptSecretText = async (
+  prompter: Prompter,
+  label: string,
+  spawn: Spawn,
+  stdin: typeof defaultStdin,
+  stdout: typeof defaultStdout,
+  defaultValue?: string
+): Promise<string> => {
+  const prompt = formatPrompt(label, defaultValue ? '***' : undefined)
+  const echoDisabled = stdin.isTTY ? setTerminalEcho(spawn, false) : false
+
+  try {
+    const answer = (await prompter.question(prompt)).trim()
+    return answer === '' ? (defaultValue ?? '') : answer
+  } finally {
+    if (echoDisabled) {
+      setTerminalEcho(spawn, true)
+      stdout.write('\n')
+    }
+  }
+}
+
 const promptYesNo = async (
   prompter: Prompter,
   label: string,
@@ -239,7 +266,16 @@ export const setupSystemd = async ({
       ? await promptOptionalText(prompter, 'CF_ACCESS_CLIENT_ID', env.CF_ACCESS_CLIENT_ID)
       : undefined
     const cfAccessClientSecret = useCloudflareAccess
-      ? await promptOptionalText(prompter, 'CF_ACCESS_CLIENT_SECRET', env.CF_ACCESS_CLIENT_SECRET)
+      ? normalizeOptionalValue(
+          await promptSecretText(
+            prompter,
+            'CF_ACCESS_CLIENT_SECRET',
+            spawn,
+            stdin,
+            stdout,
+            env.CF_ACCESS_CLIENT_SECRET
+          )
+        )
       : undefined
 
     if (Boolean(cfAccessClientId) !== Boolean(cfAccessClientSecret)) {
